@@ -82,7 +82,7 @@ def investment_signals(sym: str, price: float, snap, p_inv: dict, index_pe: floa
         if snap.pe_ttm < p_inv["pe_cheap_vs_index"] * index_pe:
             notes = [f"P/E {snap.pe_ttm:.1f} vs mkt {index_pe:.1f}"]
             if yoy is not None:
-                notes.append(f"qtr EPS {yoy*100:+.0f}% YoY")
+                notes.append(f"qtr EPS {yoy*100:+.0f}% YoY" + (" [base effect/one-offs? verify]" if yoy > 1 else ""))
             near_low = snap.low_52w and price <= snap.low_52w * (1 + p_inv["near_52w_low_pct"] / 100)
             if near_low:
                 notes.append(f"near 52w low {snap.low_52w:,.0f}")

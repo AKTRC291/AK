@@ -31,6 +31,9 @@ investment:
     APL: "P/E incl. inventory gains - check normalized EPS"
     SHEL: "P/E incl. inventory gains - check normalized EPS"
     MARI: "check one-offs (super-tax reversal)"
+    ATRL: "refinery - P/E incl. inventory gains"
+    NRL: "refinery - P/E incl. inventory gains"
+    CNERGY: "refinery - P/E incl. inventory gains"
 
 intraday:
   scan_every_min: 30
