@@ -1,0 +1,50 @@
+# PSX Blue-Chip Monitor configuration
+# Edit freely; all times are Pakistan Standard Time (PKT, UTC+5).
+
+universe:
+  index: KSE100              # constituents pulled live from dps.psx.com.pk/indices/KSE100
+  extra_watchlist: [MARI, PSO, AIRLINK, LUCK, BOP, APL, SHEL, GO, SYS, SLTC]
+  min_avg_traded_value_rs: 50_000_000   # 20-day avg (close x volume) liquidity floor
+
+swing:                       # 3-10 session holding period
+  trend_fast: 50
+  trend_slow: 200
+  breakout_lookback: 20
+  breakout_volume_mult: 1.5  # breakout volume must be >= 1.5x 20-day avg
+  pullback_rsi_period: 2
+  pullback_rsi_max: 10       # Connors-style RSI(2) pullback inside an uptrend
+  atr_period: 14
+  stop_atr_mult: 1.5
+  target_r_multiple: 2.0     # target = entry + 2R
+  max_hold_days: 10
+  overbought_rsi14: 75       # exit/avoid flag
+
+investment:
+  # Your own valuation zones (Rs/share). Alert fires when price enters a zone.
+  zones:
+    AIRLINK: {accumulate: [100, 105], trim: [135, 140]}
+  pe_cheap_vs_index: 0.8     # flag if stock P/E < 0.8x KSE-100 median P/E
+  near_52w_low_pct: 10       # flag if within 10% of 52-week low (and fundamentals ok)
+  pe_caveats:                # earnings-quality tags appended to VALUE flags
+    PSO: "P/E incl. inventory gains - check normalized EPS"
+    APL: "P/E incl. inventory gains - check normalized EPS"
+    SHEL: "P/E incl. inventory gains - check normalized EPS"
+    MARI: "check one-offs (super-tax reversal)"
+
+intraday:
+  scan_every_min: 30
+  big_move_pct: 4.0          # alert on +/-4% intraday move in a universe stock
+
+macro:                       # 3-line context; refreshed by the Claude macro task or by hand
+  file: data/macro.txt
+
+whatsapp:
+  provider: callmebot        # credentials come from .env (never commit them)
+
+http:
+  delay_sec: 0.6             # politeness delay between PSX requests
+  timeout_sec: 30
+
+# PSX gazetted holidays (YYYY-MM-DD). Add the 2027 list when PSX publishes it.
+holidays:
+  - 2026-12-25

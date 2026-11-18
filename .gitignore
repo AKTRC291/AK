@@ -1,0 +1,8 @@
+.env
+data/eod/
+data/*.json
+data/backtest_trades.csv
+__pycache__/
+*.pyc
+.venv/
+logs/
