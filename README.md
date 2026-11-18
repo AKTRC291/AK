@@ -12,7 +12,7 @@ announcements) work from anywhere. So the monitor runs on your PC (or a Pakistan
 |---|---|---|
 | 09:15 | `preopen` | macro lines + stocks within 3% of a 20-day-high breakout trigger |
 | 09:45-15:15, every 30 min | `intraday` | only NEW triggers: live breakout on volume pace, +/-4% moves, your price zones |
-| 15:50 | `close` | full KSE-100 scan: swing table (entry / stop / target), value flags, corporate events |
+| 15:50 | `close` | full KSE-100 scan from PSX daily market table: swing table (entry / stop / target), value flags, corporate events |
 
 ## Rules (defaults in `config.yaml`; validate with the backtest before trusting them)
 - **Trend filter:** close > 50DMA > 200DMA. **Liquidity:** 20-day avg traded value >= Rs 50M.

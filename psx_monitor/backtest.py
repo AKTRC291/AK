@@ -2,8 +2,9 @@
 
 Execution model (deliberately conservative):
   - signal on day t close -> enter at day t+1 OPEN
-  - exits checked on CLOSE only (feed has no high/low): stop, target,
-    PULLBACK mean-reversion exit (close > 5DMA), or time stop at max_hold_days
+  - stop/target checked on the day's LOW/HIGH (stop first if both hit = conservative);
+    a gap through the level fills at the open. PULLBACK also exits on close > 5DMA;
+    time stop at max_hold_days
   - one open trade per symbol; cost 0.25% per side (brokerage + CVT/SST + slippage)
 """
 from __future__ import annotations
@@ -35,17 +36,20 @@ def backtest_symbol(sym: str, raw: pd.DataFrame, p: dict, p_univ: dict, start: s
         risk = p["stop_atr_mult"] * r["atr"]
         stop, target = entry - risk, entry + p["target_r_multiple"] * risk
         exit_i, reason = None, "time"
+        hl = "low" in df.columns
+        px = None
         for j in range(e_i, min(e_i + p["max_hold_days"], n)):
-            c = df["close"].iloc[j]
-            if c <= stop:
-                exit_i, reason = j, "stop"; break
-            if c >= target:
-                exit_i, reason = j, "target"; break
+            o, c = df["open"].iloc[j], df["close"].iloc[j]
+            lo, hi = (df["low"].iloc[j], df["high"].iloc[j]) if hl else (c, c)
+            if lo <= stop:
+                exit_i, reason, px = j, "stop", min(o, stop) if hl else c; break
+            if hi >= target:
+                exit_i, reason, px = j, "target", max(o, target) if hl else c; break
             if kind == "PULLBACK" and j > e_i and c > df["sma5"].iloc[j]:
-                exit_i, reason = j, "mean-rev"; break
+                exit_i, reason, px = j, "mean-rev", c; break
         if exit_i is None:
             exit_i = min(e_i + p["max_hold_days"] - 1, n - 1)
-        px = df["close"].iloc[exit_i]
+            px = df["close"].iloc[exit_i]
         ret = (px * (1 - COST)) / (entry * (1 + COST)) - 1
         trades.append(dict(symbol=sym, setup=kind, signal_date=df.index[i].date(), entry_date=df.index[e_i].date(),
                            exit_date=df.index[exit_i].date(), entry=entry, exit=px, days=exit_i - e_i + 1,

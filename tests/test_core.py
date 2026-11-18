@@ -47,3 +47,23 @@ def test_signals_and_backtest_run():
 def test_zone_signal():
     out = investment_signals("AIRLINK", 103, None, C["investment"], None)
     assert out and "accumulate" in out[0].note
+
+HIST_HTML = """<table id="historicalTable"><thead><tr><th>SYMBOL</th><th>LDCP</th><th>OPEN</th><th>HIGH</th><th>LOW</th>
+<th>CLOSE</th><th>CHANGE</th><th>CHANGE (%)</th><th>VOLUME</th></tr></thead><tbody>
+<tr data-type="equity"><td data-value="LUCK"><a href="/company/LUCK">LUCK</a></td><td>439.91</td><td>439.98</td><td>442.00</td>
+<td>430.02</td><td>433.90</td><td>-6.01</td><td>(1.37%)</td><td>894,411</td></tr>
+<tr data-type="debt"><td data-value="P01GIS">P01GIS</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>0</td><td>0</td><td>0</td></tr>
+</tbody></table>"""
+
+def test_price_table_and_history(tmp_path, monkeypatch):
+    from psx_monitor import data as d
+    df = d.parse_price_table(HIST_HTML)
+    assert list(df.index) == ["LUCK"] and df.at["LUCK", "high"] == 442.0 and df.at["LUCK", "volume"] == 894411
+    monkeypatch.setattr(d, "DAILY", tmp_path)
+    class Fake:
+        def day_table(self, ds):
+            return df if pd.Timestamp(ds).day % 7 else df.iloc[0:0]
+    h = d.History(Fake())
+    h.sync("2026-10-01", "2026-10-31", verbose=False)
+    s = h.symbol("LUCK")
+    assert len(s) > 15 and set(s.columns) == {"open", "high", "low", "close", "volume"}

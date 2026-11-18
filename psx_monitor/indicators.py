@@ -1,9 +1,7 @@
 """Technical indicators on PSX EOD data (open, close, volume).
 
-PSX's EOD feed has no high/low, so ATR uses an open/close true-range proxy:
-    TR = max(|C - O|, |C - C_prev|, |O - C_prev|)
-This runs ~20-30% below a true high/low ATR; the backtest is run on the same
-proxy, so stop multiples are calibrated to it.
+Daily data comes from PSX's Historical Data page (open/high/low/close/volume),
+so ATR is a true Wilder ATR. If only open/close exist, an open/close proxy is used.
 """
 import numpy as np
 import pandas as pd
@@ -23,8 +21,12 @@ def rsi(s: pd.Series, n: int) -> pd.Series:
 
 
 def atr_proxy(df: pd.DataFrame, n: int) -> pd.Series:
+    """True ATR when high/low are available, else the open/close proxy."""
     pc = df["close"].shift()
-    tr = pd.concat([(df["close"] - df["open"]).abs(), (df["close"] - pc).abs(), (df["open"] - pc).abs()], axis=1).max(axis=1)
+    if {"high", "low"} <= set(df.columns):
+        tr = pd.concat([df["high"] - df["low"], (df["high"] - pc).abs(), (df["low"] - pc).abs()], axis=1).max(axis=1)
+    else:
+        tr = pd.concat([(df["close"] - df["open"]).abs(), (df["close"] - pc).abs(), (df["open"] - pc).abs()], axis=1).max(axis=1)
     return tr.ewm(alpha=1 / n, adjust=False, min_periods=n).mean()
 
 

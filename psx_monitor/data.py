@@ -24,64 +24,123 @@ from bs4 import BeautifulSoup
 
 BASE = "https://dps.psx.com.pk"
 UA = "psx-monitor/0.1 (personal research tool)"
-CACHE = Path(__file__).resolve().parent.parent / "data" / "eod"
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+DAILY = DATA_DIR / "daily"          # one CSV per trading day (whole market)
+CACHE = DATA_DIR / "eod"
 
 
 class PSXClient:
     def __init__(self, delay_sec: float = 0.6, timeout_sec: float = 30):
         self.s = requests.Session()
-        self.s.headers.update({"User-Agent": UA, "X-Requested-With": "XMLHttpRequest"})
+        self.s.headers.update({"User-Agent": UA, "X-Requested-With": "XMLHttpRequest",
+                               "Referer": BASE + "/"})
         self.delay = delay_sec
         self.timeout = timeout_sec
         self._last = 0.0
+        self.last_error = ""
 
-    def _get(self, path: str) -> requests.Response:
-        wait = self.delay - (time.time() - self._last)
-        if wait > 0:
-            time.sleep(wait)
-        for attempt in range(3):
+    def _req(self, path: str, data: dict | None = None, tries: int = 3) -> requests.Response:
+        for attempt in range(tries):
+            wait = self.delay - (time.time() - self._last)
+            if wait > 0:
+                time.sleep(wait)
             try:
-                r = self.s.get(BASE + path, timeout=self.timeout)
+                if data is None:
+                    r = self.s.get(BASE + path, timeout=self.timeout)
+                else:
+                    r = self.s.post(BASE + path, data=data, timeout=self.timeout)
                 self._last = time.time()
                 if r.status_code == 200:
                     return r
+                self.last_error = f"HTTP {r.status_code}"
                 if r.status_code == 404:
-                    raise PSXUnavailable(f"{path}: 404 (portal data is geo-restricted to Pakistan IPs)")
-            except requests.RequestException:
-                pass
+                    break
+            except requests.RequestException as e:
+                self._last = time.time()
+                self.last_error = f"{type(e).__name__}: {str(e)[:120]}"
             time.sleep(2 * (attempt + 1))
-        raise PSXUnavailable(f"{path}: no response after retries")
+        raise PSXUnavailable(f"{path}: {self.last_error}")
 
-    # ---------- prices ----------
-    def eod(self, symbol: str) -> pd.DataFrame:
-        """Full daily history: index=date, columns open, close, volume."""
-        j = self._get(f"/timeseries/eod/{symbol}").json()
-        return eod_from_json(j)
+    _get = _req
 
-    def eod_cached(self, symbol: str, max_age_hours: float = 12) -> pd.DataFrame:
-        CACHE.mkdir(parents=True, exist_ok=True)
-        f = CACHE / f"{symbol}.csv"
-        if f.exists() and (time.time() - f.stat().st_mtime) < max_age_hours * 3600:
-            return pd.read_csv(f, index_col=0, parse_dates=True)
-        df = self.eod(symbol)
-        df.to_csv(f)
-        return df
+    # ---------- whole-market daily table (PSX 'Historical Data' page) ----------
+    def day_table(self, date: str) -> pd.DataFrame:
+        """All equities for one date: index=symbol, cols open high low close volume ldcp."""
+        html = self._req("/historical", data={"date": date}).text
+        return parse_price_table(html)
 
-    def intraday(self, symbol: str) -> pd.DataFrame:
-        j = self._get(f"/timeseries/int/{symbol}").json()
-        rows = j.get("data") or []
-        df = pd.DataFrame([r[:3] for r in rows], columns=["ts", "price", "volume"])
-        df["ts"] = pd.to_datetime(df["ts"], unit="s", utc=True).dt.tz_convert("Asia/Karachi")
-        return df.sort_values("ts").reset_index(drop=True)
+    def market_watch(self) -> pd.DataFrame:
+        """Live snapshot of all symbols (same columns as day_table; close = current)."""
+        return parse_price_table(self._req("/market-watch").text)
+
+    # ---------- per-symbol JSON (may be filtered; used only as fallback) ----------
+    def eod_timeseries(self, symbol: str) -> pd.DataFrame:
+        return eod_from_json(self._req(f"/timeseries/eod/{symbol}", tries=1).json())
 
     # ---------- universe ----------
     def index_constituents(self, code: str = "KSE100") -> list[str]:
-        html = self._get(f"/indices/{code}").text
-        return parse_constituents(html)
+        return parse_constituents(self._req(f"/indices/{code}").text)
 
     # ---------- fundamentals / announcements ----------
     def company(self, symbol: str) -> "CompanySnapshot":
-        return parse_company(symbol, self._get(f"/company/{symbol}").text)
+        return parse_company(symbol, self._req(f"/company/{symbol}").text)
+
+
+class History:
+    """Local store of whole-market daily tables -> per-symbol OHLCV frames."""
+
+    def __init__(self, client: PSXClient):
+        self.cl = client
+        DAILY.mkdir(parents=True, exist_ok=True)
+        self._panel: pd.DataFrame | None = None
+
+    def sync(self, start: str, end: str | None = None, verbose: bool = True) -> int:
+        days = pd.bdate_range(start, end or pd.Timestamp.now(tz="Asia/Karachi").date())
+        todo = [d for d in days if not (DAILY / f"{d:%Y-%m-%d}.csv").exists()]
+        fetched = 0
+        for k, d in enumerate(todo, 1):
+            ds = f"{d:%Y-%m-%d}"
+            try:
+                df = self.cl.day_table(ds)
+            except PSXUnavailable as e:
+                if verbose:
+                    print(f"  {ds}: failed ({e})")
+                continue
+            if df.empty and d.date() >= pd.Timestamp.now(tz="Asia/Karachi").date():
+                continue                     # today's table not published yet; retry later
+            df.to_csv(DAILY / f"{ds}.csv")   # empty file = holiday / no trading
+            fetched += 1
+            if verbose and (k % 25 == 0 or k == len(todo)):
+                print(f"  synced {k}/{len(todo)} days (last {ds}, {len(df)} symbols)")
+        self._panel = None
+        return fetched
+
+    def panel(self) -> pd.DataFrame:
+        if self._panel is None:
+            frames = []
+            for f in sorted(DAILY.glob("*.csv")):
+                try:
+                    df = pd.read_csv(f, index_col=0)
+                except pd.errors.EmptyDataError:
+                    continue
+                if not df.empty:
+                    df["date"] = pd.Timestamp(f.stem)
+                    frames.append(df)
+            self._panel = (pd.concat(frames).rename_axis("symbol").reset_index()
+                           if frames else pd.DataFrame(columns=["symbol", "date"]))
+        return self._panel
+
+    def symbol(self, sym: str) -> pd.DataFrame:
+        p = self.panel()
+        df = p[p["symbol"] == sym].set_index("date").sort_index()
+        df = df[["open", "high", "low", "close", "volume"]].astype(float)
+        df = df[df["close"] > 0]
+        for c in ("open", "high", "low"):
+            df[c] = df[c].where(df[c] > 0, df["close"])
+        return df
+
+    def has_data(self) -> bool:
+        return any(f.stat().st_size > 50 for f in DAILY.glob("*.csv"))
 
 
 class PSXUnavailable(RuntimeError):
@@ -95,6 +154,43 @@ def eod_from_json(j: dict) -> pd.DataFrame:
     df = df.drop(columns="ts").drop_duplicates("date", keep="last").set_index("date").sort_index()
     df["open"] = df["open"].fillna(df["close"])
     return df[["open", "close", "volume"]].astype(float)
+
+
+_COLMAP = {"symbol": "symbol", "scrip": "symbol", "ldcp": "ldcp", "open": "open", "high": "high", "low": "low",
+           "close": "close", "current": "close", "volume": "volume", "change": "change", "change (%)": "change_pct"}
+
+
+def parse_price_table(html: str) -> pd.DataFrame:
+    """Parse PSX historical / market-watch HTML tables by header name."""
+    soup = BeautifulSoup(html, "html.parser")
+    table = soup.find("table")
+    if table is None:
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume", "ldcp"])
+    heads = [th.get_text(" ", strip=True).lower() for th in table.find_all("th")]
+    cols = [_COLMAP.get(h, _COLMAP.get(h.split(" ")[0], h)) for h in heads]
+    rows = []
+    for tr in table.select("tbody tr"):
+        if tr.get("data-type") == "debt":
+            continue
+        tds = tr.find_all("td")
+        if len(tds) < len(cols):
+            continue
+        rec = {}
+        for c, td in zip(cols, tds):
+            if c == "symbol":
+                rec[c] = (td.get("data-value") or td.get_text(" ", strip=True).split(" ")[0]).strip()
+            elif c in ("open", "high", "low", "close", "volume", "ldcp", "change", "change_pct"):
+                rec[c] = _num(td.get_text(strip=True))
+        if rec.get("symbol"):
+            rows.append(rec)
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame(columns=["open", "high", "low", "close", "volume", "ldcp"])
+    df = df.drop_duplicates("symbol").set_index("symbol")
+    for c in ("open", "high", "low", "close", "volume", "ldcp"):
+        if c not in df:
+            df[c] = None
+    return df
 
 
 def parse_constituents(html: str) -> list[str]:

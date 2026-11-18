@@ -5,6 +5,7 @@
   python -m psx_monitor intraday     # every 30 min in market hours: new triggers only
   python -m psx_monitor backtest [--start 2023-11-01]
   python -m psx_monitor test-whatsapp
+  python -m psx_monitor diagnose     # which PSX endpoints answer from this PC
 Add --dry-run to print instead of sending.
 """
 from __future__ import annotations
@@ -20,7 +21,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import yaml
 
-from .data import PSXClient, PSXUnavailable
+from .data import History, PSXClient, PSXUnavailable
 from .indicators import add_all
 from .notify import send_whatsapp
 from .signals import investment_signals, swing_signals
@@ -69,6 +70,9 @@ def run_close(c: dict, dry: bool) -> None:
     cl = PSXClient(c["http"]["delay_sec"], c["http"]["timeout_sec"])
     syms = universe(cl, c)
     sw, p_u = c["swing"], c["universe"]
+    hist = History(cl)
+    first = (now() - dt.timedelta(days=420)).date() if not hist.has_data() else (now() - dt.timedelta(days=10)).date()
+    hist.sync(str(first), verbose=False)
     swing, inv, events, levels, snaps, failed = [], [], [], {}, {}, []
     for s in syms:
         try:
@@ -76,7 +80,10 @@ def run_close(c: dict, dry: bool) -> None:
         except PSXUnavailable:
             pass
         try:
-            df = add_all(cl.eod_cached(s, max_age_hours=0), sw)
+            raw = hist.symbol(s)
+            if len(raw) < sw["trend_fast"] + 5:
+                raise PSXUnavailable("not enough history")
+            df = add_all(raw, sw)
         except PSXUnavailable:
             failed.append(s); continue
         swing += swing_signals(s, df, sw, p_u)
@@ -137,14 +144,14 @@ def run_intraday(c: dict, dry: bool) -> None:
     watch = [s for s, v in lv.items() if v["uptrend"] and v["close"] >= 0.97 * v["breakout"]]
     watch = list(dict.fromkeys(watch + c["universe"]["extra_watchlist"] + list(zones)))
     alerts = []
+    try:
+        mw = cl.market_watch()
+    except PSXUnavailable as e:
+        print("market-watch unavailable:", e); return
     for s in watch:
-        try:
-            ticks = cl.intraday(s)
-        except PSXUnavailable:
+        if s not in mw.index or not mw.at[s, "close"]:
             continue
-        if ticks.empty:
-            continue
-        px, vol = ticks["price"].iloc[-1], ticks["volume"].sum()
+        px, vol = float(mw.at[s, "close"]), float(mw.at[s, "volume"] or 0)
         v = lv.get(s)
         if v:
             chg = 100 * (px / v["close"] - 1)
@@ -168,12 +175,18 @@ def run_intraday(c: dict, dry: bool) -> None:
 def run_backtest(c: dict, start: str | None) -> None:
     from .backtest import backtest_symbol, summarize
     cl = PSXClient(c["http"]["delay_sec"], c["http"]["timeout_sec"])
+    start = start or str((now() - dt.timedelta(days=3 * 365)).date())
+    warmup = str((pd.Timestamp(start) - pd.Timedelta(days=330)).date())  # 200DMA warm-up
+    hist = History(cl)
+    print(f"Syncing PSX daily market tables from {warmup} (first run ~10-15 min, cached after)...")
+    hist.sync(warmup)
     trades = []
-    for s in universe(cl, c):
-        try:
-            trades += backtest_symbol(s, cl.eod_cached(s), c["swing"], c["universe"], start)
-        except PSXUnavailable as e:
-            print("skip", s, e, file=sys.stderr)
+    syms = universe(cl, c)
+    for s in syms:
+        raw = hist.symbol(s)
+        if len(raw) < c["swing"]["trend_slow"]:
+            print("skip", s, f"only {len(raw)} days", file=sys.stderr); continue
+        trades += backtest_symbol(s, raw, c["swing"], c["universe"], start)
     t = pd.DataFrame(trades)
     DATA.mkdir(exist_ok=True)
     t.to_csv(DATA / "backtest_trades.csv", index=False)
@@ -183,9 +196,26 @@ def run_backtest(c: dict, start: str | None) -> None:
         print("\nBy year:\n", t.groupby(["year", "setup"]).ret.agg(["count", "mean"]).round(4).to_string())
 
 
+def run_diagnose(c: dict) -> None:
+    cl = PSXClient(c["http"]["delay_sec"], c["http"]["timeout_sec"])
+    d = now().date() - dt.timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= dt.timedelta(days=1)
+    tests = [("index list  /indices/KSE100", lambda: f"{len(cl.index_constituents())} symbols"),
+             ("company     /company/LUCK", lambda: f"price {cl.company('LUCK').price}"),
+             (f"daily table /historical {d}", lambda: f"{len(cl.day_table(str(d)))} symbols"),
+             ("live        /market-watch", lambda: f"{len(cl.market_watch())} symbols"),
+             ("json        /timeseries/eod/LUCK", lambda: f"{len(cl.eod_timeseries('LUCK'))} days")]
+    for name, fn in tests:
+        try:
+            print(f"OK    {name}: {fn()}")
+        except Exception as e:
+            print(f"FAIL  {name}: {e}")
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(prog="psx_monitor")
-    ap.add_argument("mode", choices=["close", "preopen", "intraday", "backtest", "test-whatsapp"])
+    ap.add_argument("mode", choices=["close", "preopen", "intraday", "backtest", "test-whatsapp", "diagnose"])
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true", help="run even on weekends/holidays")
     ap.add_argument("--start")
@@ -194,6 +224,8 @@ def main(argv=None) -> None:
     DATA.mkdir(exist_ok=True)
     if a.mode == "backtest":
         return run_backtest(c, a.start)
+    if a.mode == "diagnose":
+        return run_diagnose(c)
     if a.mode == "test-whatsapp":
         return send_whatsapp("PSX monitor: WhatsApp link OK.", a.dry_run)
     if not (a.force or is_trading_day(c)):
