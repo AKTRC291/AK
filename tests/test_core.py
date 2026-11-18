@@ -60,10 +60,20 @@ def test_price_table_and_history(tmp_path, monkeypatch):
     df = d.parse_price_table(HIST_HTML)
     assert list(df.index) == ["LUCK"] and df.at["LUCK", "high"] == 442.0 and df.at["LUCK", "volume"] == 894411
     monkeypatch.setattr(d, "DAILY", tmp_path)
-    class Fake:
-        def day_table(self, ds):
-            return df if pd.Timestamp(ds).day % 7 else df.iloc[0:0]
-    h = d.History(Fake())
-    h.sync("2026-10-01", "2026-10-31", verbose=False)
-    s = h.symbol("LUCK")
+    for day in pd.bdate_range("2026-10-01", "2026-10-31"):
+        df.to_csv(tmp_path / f"{day:%Y-%m-%d}.csv")
+    s = d.History().symbol("LUCK")
     assert len(s) > 15 and set(s.columns) == {"open", "high", "low", "close", "volume"}
+
+def test_inbox_import(tmp_path, monkeypatch):
+    from psx_monitor import data as d
+    monkeypatch.setattr(d, "DAILY", tmp_path / "daily")
+    inbox = tmp_path / "inbox"; inbox.mkdir()
+    # whole-market day file, terminal-style headers, date in filename
+    (inbox / "marketwatch_2026-11-17.csv").write_text("Scrip,Open,High,Low,LTP,Volume\nLUCK,439.98,442,430.02,433.90,\"894,411\"\nMARI,600,610,595,605,120000\n")
+    # per-symbol history file, dd/mm/yyyy dates
+    (inbox / "PSO.csv").write_text("Date,Open,High,Low,Close,Volume\n14/11/2026,360,365,358,362,500000\n17/11/2026,362,366,360,363.7,450000\n")
+    assert d.import_inbox(inbox, verbose=False) == 2
+    day = pd.read_csv(tmp_path / "daily" / "2026-11-17.csv", index_col=0)
+    assert set(day.index) == {"LUCK", "MARI", "PSO"} and day.at["LUCK", "volume"] == 894411
+    assert (tmp_path / "daily" / "2026-11-14.csv").exists() and (inbox / "processed" / "PSO.csv").exists()

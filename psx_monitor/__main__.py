@@ -6,6 +6,7 @@
   python -m psx_monitor backtest [--start 2023-11-01]
   python -m psx_monitor test-whatsapp
   python -m psx_monitor diagnose     # which PSX endpoints answer from this PC
+  python -m psx_monitor import       # load terminal exports from inbox/
 Add --dry-run to print instead of sending.
 """
 from __future__ import annotations
@@ -21,7 +22,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import yaml
 
-from .data import History, PSXClient, PSXUnavailable
+from .data import History, PSXClient, PSXUnavailable, import_inbox
 from .indicators import add_all
 from .notify import send_whatsapp
 from .signals import investment_signals, swing_signals
@@ -70,9 +71,8 @@ def run_close(c: dict, dry: bool) -> None:
     cl = PSXClient(c["http"]["delay_sec"], c["http"]["timeout_sec"])
     syms = universe(cl, c)
     sw, p_u = c["swing"], c["universe"]
-    hist = History(cl)
-    first = (now() - dt.timedelta(days=420)).date() if not hist.has_data() else (now() - dt.timedelta(days=10)).date()
-    hist.sync(str(first), verbose=False)
+    import_inbox()                       # terminal exports dropped in inbox/
+    hist = History(cl)   # prices come only from terminal exports (PSX blocks automated price requests)
     swing, inv, events, levels, snaps, failed = [], [], [], {}, {}, []
     for s in syms:
         try:
@@ -106,14 +106,17 @@ def run_close(c: dict, dry: bool) -> None:
     lines = [f"*PSX close scan {now():%d-%b-%Y}*", macro_lines(c), ""]
     order = {"BREAKOUT": 0, "PULLBACK": 1, "TREND-BREAK": 2, "OVERBOUGHT": 3}
     lines.append("*Swing (3-10d)*")
-    lines += [x.row() for x in sorted(swing, key=lambda x: order.get(x.kind, 9))] or ["none"]
+    if failed and len(failed) == len(syms):
+        lines.append("no price data - save today's terminal export into inbox/")
+    else:
+        lines += [x.row() for x in sorted(swing, key=lambda x: order.get(x.kind, 9))] or ["none"]
     lines += ["", "*Investment*"] + ([x.row() for x in inv] or ["none"])
     if events:
         lines += ["", "*Events*"] + events
     if index_pe:
         lines.append(f"\nUniverse median P/E {index_pe:.1f} | scanned {len(syms) - len(failed)}/{len(syms)}")
-    if failed:
-        lines.append(f"Data failed: {', '.join(failed[:15])}")
+    if failed and len(failed) < len(syms):
+        lines.append(f"No/short price history: {', '.join(failed[:15])}{' ...' if len(failed) > 15 else ''}")
     send_whatsapp("\n".join(lines), dry)
 
 
@@ -144,14 +147,14 @@ def run_intraday(c: dict, dry: bool) -> None:
     watch = [s for s, v in lv.items() if v["uptrend"] and v["close"] >= 0.97 * v["breakout"]]
     watch = list(dict.fromkeys(watch + c["universe"]["extra_watchlist"] + list(zones)))
     alerts = []
-    try:
-        mw = cl.market_watch()
-    except PSXUnavailable as e:
-        print("market-watch unavailable:", e); return
-    for s in watch:
-        if s not in mw.index or not mw.at[s, "close"]:
+    for s in watch[:40]:                  # company pages: public, fetched politely
+        try:
+            snap = cl.company(s)
+        except PSXUnavailable:
             continue
-        px, vol = float(mw.at[s, "close"]), float(mw.at[s, "volume"] or 0)
+        if not snap.price:
+            continue
+        px, vol = snap.price, snap.volume or 0.0
         v = lv.get(s)
         if v:
             chg = 100 * (px / v["close"] - 1)
@@ -177,9 +180,8 @@ def run_backtest(c: dict, start: str | None) -> None:
     cl = PSXClient(c["http"]["delay_sec"], c["http"]["timeout_sec"])
     start = start or str((now() - dt.timedelta(days=3 * 365)).date())
     warmup = str((pd.Timestamp(start) - pd.Timedelta(days=330)).date())  # 200DMA warm-up
+    import_inbox()
     hist = History(cl)
-    print(f"Syncing PSX daily market tables from {warmup} (first run ~10-15 min, cached after)...")
-    hist.sync(warmup)
     trades = []
     syms = universe(cl, c)
     for s in syms:
@@ -203,9 +205,7 @@ def run_diagnose(c: dict) -> None:
         d -= dt.timedelta(days=1)
     tests = [("index list  /indices/KSE100", lambda: f"{len(cl.index_constituents())} symbols"),
              ("company     /company/LUCK", lambda: f"price {cl.company('LUCK').price}"),
-             (f"daily table /historical {d}", lambda: f"{len(cl.day_table(str(d)))} symbols"),
-             ("live        /market-watch", lambda: f"{len(cl.market_watch())} symbols"),
-             ("json        /timeseries/eod/LUCK", lambda: f"{len(cl.eod_timeseries('LUCK'))} days")]
+             ("price files in inbox/ + data/daily/", lambda: f"{len(list((DATA / 'daily').glob('*.csv')))} trading days stored")]
     for name, fn in tests:
         try:
             print(f"OK    {name}: {fn()}")
@@ -215,7 +215,7 @@ def run_diagnose(c: dict) -> None:
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(prog="psx_monitor")
-    ap.add_argument("mode", choices=["close", "preopen", "intraday", "backtest", "test-whatsapp", "diagnose"])
+    ap.add_argument("mode", choices=["close", "preopen", "intraday", "backtest", "test-whatsapp", "diagnose", "import"])
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true", help="run even on weekends/holidays")
     ap.add_argument("--start")
@@ -224,6 +224,8 @@ def main(argv=None) -> None:
     DATA.mkdir(exist_ok=True)
     if a.mode == "backtest":
         return run_backtest(c, a.start)
+    if a.mode == "import":
+        return print(f"{import_inbox()} file(s) imported")
     if a.mode == "diagnose":
         return run_diagnose(c)
     if a.mode == "test-whatsapp":

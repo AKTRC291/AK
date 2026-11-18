@@ -1,15 +1,10 @@
 """Data access for the PSX Data Portal (dps.psx.com.pk).
 
-The portal's JSON endpoints (/timeseries, /symbols, /indices, /market-watch)
-only answer from Pakistani IPs, so this module must run on a machine in
-Pakistan. The /company/<SYMBOL> HTML page is used for fundamentals and
-corporate announcements.
-
-Endpoint formats (taken from the portal's own script.js):
-  /timeseries/eod/<SYM>  -> {"data": [[unix_ts, close, volume, open], ...]}
-  /timeseries/int/<SYM>  -> {"data": [[unix_ts, price, volume], ...]}  (today's ticks)
-  /indices/<CODE>        -> HTML table of constituents
-  /market-watch          -> HTML table of all symbols for the day
+PSX blocks automated requests to its price endpoints (/historical, /market-watch,
+/timeseries return 403), so daily prices come from broker-terminal exports dropped
+into inbox/ (see import_inbox). PSX's public pages used here:
+  /indices/<CODE>    -> HTML table of index constituents
+  /company/<SYMBOL>  -> live price/volume, P/E, EPS history, 52w range, announcements
 """
 from __future__ import annotations
 
@@ -53,7 +48,7 @@ class PSXClient:
                 if r.status_code == 200:
                     return r
                 self.last_error = f"HTTP {r.status_code}"
-                if r.status_code == 404:
+                if r.status_code in (403, 404):   # blocked / not found: retrying won't help
                     break
             except requests.RequestException as e:
                 self._last = time.time()
@@ -62,20 +57,6 @@ class PSXClient:
         raise PSXUnavailable(f"{path}: {self.last_error}")
 
     _get = _req
-
-    # ---------- whole-market daily table (PSX 'Historical Data' page) ----------
-    def day_table(self, date: str) -> pd.DataFrame:
-        """All equities for one date: index=symbol, cols open high low close volume ldcp."""
-        html = self._req("/historical", data={"date": date}).text
-        return parse_price_table(html)
-
-    def market_watch(self) -> pd.DataFrame:
-        """Live snapshot of all symbols (same columns as day_table; close = current)."""
-        return parse_price_table(self._req("/market-watch").text)
-
-    # ---------- per-symbol JSON (may be filtered; used only as fallback) ----------
-    def eod_timeseries(self, symbol: str) -> pd.DataFrame:
-        return eod_from_json(self._req(f"/timeseries/eod/{symbol}", tries=1).json())
 
     # ---------- universe ----------
     def index_constituents(self, code: str = "KSE100") -> list[str]:
@@ -86,34 +67,86 @@ class PSXClient:
         return parse_company(symbol, self._req(f"/company/{symbol}").text)
 
 
-class History:
-    """Local store of whole-market daily tables -> per-symbol OHLCV frames."""
+# ---------- terminal / manual exports ----------
+INBOX = Path(__file__).resolve().parent.parent / "inbox"
+_SYN = {
+    "symbol": ("symbol", "scrip", "script", "code", "ticker", "sym", "scripcode", "symbolcode"),
+    "date": ("date", "tradedate", "datetime", "day", "dated"),
+    "open": ("open", "openprice", "opening", "openrate"),
+    "high": ("high", "highprice", "dayhigh", "highrate"),
+    "low": ("low", "lowprice", "daylow", "lowrate"),
+    "close": ("close", "closeprice", "closing", "last", "ltp", "lastprice", "current", "currentprice", "lasttradeprice", "rate"),
+    "volume": ("volume", "vol", "totalvolume", "turnovershares", "qty", "tradedvolume"),
+}
 
-    def __init__(self, client: PSXClient):
-        self.cl = client
+
+def _norm(h) -> str:
+    return re.sub(r"[^a-z]", "", str(h).lower())
+
+
+def standardize_export(df: pd.DataFrame, name: str, default_date: str) -> dict[str, pd.DataFrame]:
+    """Map any broker/PSX export to {date: DataFrame(index=symbol, open high low close volume)}."""
+    cols = {}
+    for c in df.columns:
+        n = _norm(c)
+        for std, syns in _SYN.items():
+            if std not in cols and n in syns:
+                cols[std] = c
+    if "close" not in cols:
+        raise ValueError(f"{name}: no close/last/LTP column found in {list(df.columns)[:12]}")
+    out = pd.DataFrame({k: df[v] for k, v in cols.items()})
+    for k in ("open", "high", "low", "close", "volume"):
+        if k in out:
+            out[k] = out[k].map(lambda x: _num(str(x)) if not isinstance(x, (int, float)) else x)
+        else:
+            out[k] = out["close"] if k != "volume" else 0.0
+    if "symbol" not in out:                       # per-symbol history file, e.g. LUCK.csv
+        out["symbol"] = re.sub(r"[^A-Z0-9]", "", Path(name).stem.upper().split("_")[0])
+    out["symbol"] = out["symbol"].astype(str).str.strip().str.upper()
+    if "date" in out:
+        out["date"] = pd.to_datetime(out["date"], errors="coerce", dayfirst=True).dt.strftime("%Y-%m-%d")
+    else:
+        m = re.search(r"(20\d{2})[-_]?(\d{2})[-_]?(\d{2})", name)
+        out["date"] = f"{m.group(1)}-{m.group(2)}-{m.group(3)}" if m else default_date
+    out = out.dropna(subset=["date", "close"])
+    return {d: g.drop(columns="date").drop_duplicates("symbol", keep="last").set_index("symbol")
+            for d, g in out.groupby("date")}
+
+
+def import_inbox(folder: Path = INBOX, verbose: bool = True) -> int:
+    """Merge every CSV/XLSX in inbox/ into data/daily/, then move it to inbox/processed/."""
+    folder.mkdir(exist_ok=True)
+    DAILY.mkdir(parents=True, exist_ok=True)
+    done = folder / "processed"; done.mkdir(exist_ok=True)
+    today = pd.Timestamp.now(tz="Asia/Karachi").strftime("%Y-%m-%d")
+    n = 0
+    for f in sorted(folder.iterdir()):
+        if f.suffix.lower() not in (".csv", ".xlsx", ".xls"):
+            continue
+        try:
+            raw = pd.read_csv(f) if f.suffix.lower() == ".csv" else pd.read_excel(f)
+            parts = standardize_export(raw, f.name, today)
+        except Exception as e:
+            print(f"inbox: could not read {f.name}: {e}"); continue
+        for d, df in parts.items():
+            target = DAILY / f"{d}.csv"
+            if target.exists() and target.stat().st_size > 50:
+                old = pd.read_csv(target, index_col=0)
+                df = pd.concat([old[~old.index.isin(df.index)], df])
+            df[["open", "high", "low", "close", "volume"]].to_csv(target)
+        f.replace(done / f.name)
+        n += 1
+        if verbose:
+            print(f"inbox: imported {f.name} ({len(parts)} day(s))")
+    return n
+
+
+class History:
+    """Local store of whole-market daily tables (data/daily/*.csv) -> per-symbol OHLCV."""
+
+    def __init__(self, client: PSXClient | None = None):
         DAILY.mkdir(parents=True, exist_ok=True)
         self._panel: pd.DataFrame | None = None
-
-    def sync(self, start: str, end: str | None = None, verbose: bool = True) -> int:
-        days = pd.bdate_range(start, end or pd.Timestamp.now(tz="Asia/Karachi").date())
-        todo = [d for d in days if not (DAILY / f"{d:%Y-%m-%d}.csv").exists()]
-        fetched = 0
-        for k, d in enumerate(todo, 1):
-            ds = f"{d:%Y-%m-%d}"
-            try:
-                df = self.cl.day_table(ds)
-            except PSXUnavailable as e:
-                if verbose:
-                    print(f"  {ds}: failed ({e})")
-                continue
-            if df.empty and d.date() >= pd.Timestamp.now(tz="Asia/Karachi").date():
-                continue                     # today's table not published yet; retry later
-            df.to_csv(DAILY / f"{ds}.csv")   # empty file = holiday / no trading
-            fetched += 1
-            if verbose and (k % 25 == 0 or k == len(todo)):
-                print(f"  synced {k}/{len(todo)} days (last {ds}, {len(df)} symbols)")
-        self._panel = None
-        return fetched
 
     def panel(self) -> pd.DataFrame:
         if self._panel is None:
@@ -132,6 +165,8 @@ class History:
 
     def symbol(self, sym: str) -> pd.DataFrame:
         p = self.panel()
+        if "close" not in p.columns:
+            return pd.DataFrame(columns=["open", "high", "low", "close", "volume"], dtype=float)
         df = p[p["symbol"] == sym].set_index("date").sort_index()
         df = df[["open", "high", "low", "close", "volume"]].astype(float)
         df = df[df["close"] > 0]
@@ -219,6 +254,7 @@ class CompanySnapshot:
     symbol: str
     name: str = ""
     price: float | None = None
+    volume: float | None = None
     pe_ttm: float | None = None
     low_52w: float | None = None
     high_52w: float | None = None
@@ -240,6 +276,7 @@ def parse_company(symbol: str, html: str) -> CompanySnapshot:
     for k, v in re.findall(r'class="stats_label">([^<]*)</div>\s*<div class="stats_value">([^<]*)<', html):
         stats.setdefault(k.strip(), v.strip())  # first occurrence = REG market
     snap.pe_ttm = _num(stats.get("P/E Ratio (TTM) **"))
+    snap.volume = _num(stats.get("Volume"))
     rng = stats.get("52-WEEK RANGE ^", "")
     parts = [p for p in re.split(r"\s*[—-]\s*", rng) if p]
     if len(parts) == 2:
