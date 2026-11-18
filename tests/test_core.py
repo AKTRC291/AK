@@ -77,3 +77,12 @@ def test_inbox_import(tmp_path, monkeypatch):
     day = pd.read_csv(tmp_path / "daily" / "2026-11-17.csv", index_col=0)
     assert set(day.index) == {"LUCK", "MARI", "PSO"} and day.at["LUCK", "volume"] == 894411
     assert (tmp_path / "daily" / "2026-11-14.csv").exists() and (inbox / "processed" / "PSO.csv").exists()
+
+
+def test_value_trap_excluded():
+    from psx_monitor.data import CompanySnapshot
+    trap = CompanySnapshot("X", pe_ttm=3.0, quarterly_eps={"Q1 2027": 1.0, "Q3 2026": 1, "Q2 2026": 1, "Q1 2026": 2.0})
+    good = CompanySnapshot("Y", pe_ttm=3.0, low_52w=95, quarterly_eps={"Q1 2027": 2.5, "Q3 2026": 1, "Q2 2026": 1, "Q1 2026": 2.0})
+    assert investment_signals("X", 100, trap, C["investment"], 8.0) == []
+    v = investment_signals("Y", 100, good, C["investment"], 8.0)
+    assert v and "+25% YoY" in v[0].note and v[0].score > 0.6

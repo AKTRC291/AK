@@ -30,8 +30,9 @@ from .signals import investment_signals, swing_signals
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
 PKT = ZoneInfo("Asia/Karachi")
-EVENT_WORDS = ("Financial Results", "Board Meeting", "Material Information", "Dividend", "Book Closure",
-               "Right", "Bonus", "General Meeting")
+EVENT_WORDS = ("Financial Results", "Board Meeting", "Material Information", "Book Closure",
+               "Right Shares", "Right Issue", "Bonus", "General Meeting", "Merger", "Acquisition", "Buy-back", "Buyback")
+EVENT_SKIP = ("credit of", "dispatch", "publication", "transmission", "dissemination")  # admin notices
 
 
 def cfg() -> dict:
@@ -99,7 +100,8 @@ def run_close(c: dict, dry: bool) -> None:
         if price:
             inv += investment_signals(s, price, snap, c["investment"], index_pe)
         for d, t in snap.announcements:
-            if recent(d) and any(w.lower() in t.lower() for w in EVENT_WORDS):
+            tl = t.lower()
+            if recent(d) and any(w.lower() in tl for w in EVENT_WORDS) and not any(x in tl for x in EVENT_SKIP):
                 events.append(f"{s}: {t} ({d})")
     (DATA / "levels.json").write_text(json.dumps(levels, default=float))
 
@@ -110,7 +112,12 @@ def run_close(c: dict, dry: bool) -> None:
         lines.append("no price data - save today's terminal export into inbox/")
     else:
         lines += [x.row() for x in sorted(swing, key=lambda x: order.get(x.kind, 9))] or ["none"]
-    lines += ["", "*Investment*"] + ([x.row() for x in inv] or ["none"])
+    zones = [x for x in inv if x.kind == "ZONE"]
+    value = sorted((x for x in inv if x.kind == "VALUE"), key=lambda x: x.score, reverse=True)
+    n_val = c["investment"].get("max_value_flags", 10)
+    lines += ["", "*Investment*"] + ([x.row() for x in zones + value[:n_val]] or ["none"])
+    if len(value) > n_val:
+        lines.append(f"(+{len(value) - n_val} more cheap names not shown)")
     if events:
         lines += ["", "*Events*"] + events
     if index_pe:

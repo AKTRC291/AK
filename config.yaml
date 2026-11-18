@@ -23,8 +23,9 @@ investment:
   # Your own valuation zones (Rs/share). Alert fires when price enters a zone.
   zones:
     AIRLINK: {accumulate: [100, 105], trim: [135, 140]}
-  pe_cheap_vs_index: 0.8     # flag if stock P/E < 0.8x KSE-100 median P/E
-  near_52w_low_pct: 10       # flag if within 10% of 52-week low (and fundamentals ok)
+  pe_cheap_vs_index: 0.7     # VALUE flag: P/E < 0.7x KSE-100 median AND quarterly EPS not falling YoY
+  max_value_flags: 10        # show only the best-ranked VALUE names
+  near_52w_low_pct: 10       # bonus rank if within 10% of 52-week low
   pe_caveats:                # earnings-quality tags appended to VALUE flags
     PSO: "P/E incl. inventory gains - check normalized EPS"
     APL: "P/E incl. inventory gains - check normalized EPS"

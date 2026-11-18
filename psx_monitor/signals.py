@@ -15,6 +15,7 @@ class Signal:
     stop: float | None = None
     target: float | None = None
     note: str = ""
+    score: float = 0.0
 
     def row(self) -> str:
         if self.entry:
@@ -73,18 +74,22 @@ def investment_signals(sym: str, price: float, snap, p_inv: dict, index_pe: floa
             lo, hi = z.get(name, [None, None])
             if lo is not None and lo <= price <= hi:
                 out.append(Signal(sym, "ZONE", price, note=f"in {name} zone {lo}-{hi}"))
-    if snap is not None:
-        notes = []
-        if snap.pe_ttm and index_pe and 0 < snap.pe_ttm < p_inv["pe_cheap_vs_index"] * index_pe:
-            notes.append(f"P/E {snap.pe_ttm:.1f} vs mkt {index_pe:.1f}")
-        if snap.low_52w and price <= snap.low_52w * (1 + p_inv["near_52w_low_pct"] / 100):
-            notes.append(f"near 52w low {snap.low_52w:,.0f}")
+    if snap is not None and snap.pe_ttm and index_pe and snap.pe_ttm > 0:
         q = list(snap.quarterly_eps.values())
-        if len(q) >= 4 and q[0] is not None and q[3] not in (None, 0) and q[0] < q[3]:
-            notes.append("latest qtr EPS below yr-ago")  # quality check before calling it cheap
-        if notes and not (len(notes) == 1 and notes[0].startswith("latest")):
+        yoy = (q[0] / q[3] - 1) if len(q) >= 4 and q[0] is not None and q[3] not in (None, 0) and q[3] > 0 else None
+        if yoy is not None and yoy < 0:
+            return out                              # cheap but earnings falling = likely value trap
+        if snap.pe_ttm < p_inv["pe_cheap_vs_index"] * index_pe:
+            notes = [f"P/E {snap.pe_ttm:.1f} vs mkt {index_pe:.1f}"]
+            if yoy is not None:
+                notes.append(f"qtr EPS {yoy*100:+.0f}% YoY")
+            near_low = snap.low_52w and price <= snap.low_52w * (1 + p_inv["near_52w_low_pct"] / 100)
+            if near_low:
+                notes.append(f"near 52w low {snap.low_52w:,.0f}")
             cav = (p_inv.get("pe_caveats") or {}).get(sym)
             if cav:
                 notes.append(f"[{cav}]")
-            out.append(Signal(sym, "VALUE", price, note="; ".join(notes)))
+            s = Signal(sym, "VALUE", price, note="; ".join(notes))
+            s.score = (1 - snap.pe_ttm / index_pe) + (0.15 if near_low else 0) + (min(yoy, 1) * 0.2 if yoy else 0)
+            out.append(s)
     return out
