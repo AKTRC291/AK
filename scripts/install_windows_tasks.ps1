@@ -1,9 +1,9 @@
 # Registers PSX monitor jobs in Windows Task Scheduler (run in PowerShell from the repo folder).
 # Times are your PC's local time - set Windows to (UTC+05:00) Islamabad, Karachi.
 $repo = (Get-Location).Path
-$py   = (Get-Command py).Source   # Python launcher; jobs run with -3.13
+$run  = Join-Path $repo "scripts\run.cmd"   # git pull (fresh macro lines) + py -3.13 -m psx_monitor
 function Add-Job($name, $mode, $trigger) {
-  $action = New-ScheduledTaskAction -Execute $py -Argument "-3.13 -m psx_monitor $mode" -WorkingDirectory $repo
+  $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$run`" $mode" -WorkingDirectory $repo
   $set = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 20)
   Register-ScheduledTask -TaskName "PSX-$name" -Action $action -Trigger $trigger -Settings $set -Force | Out-Null
   Write-Host "registered PSX-$name"
