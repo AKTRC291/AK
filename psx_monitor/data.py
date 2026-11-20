@@ -169,6 +169,44 @@ def standardize_export(df: pd.DataFrame, name: str, default_date: str) -> dict[s
             for d, g in out.groupby("date")}
 
 
+def parse_lis(text: str) -> dict[str, pd.DataFrame]:
+    """PSX daily closing file (closingNN.lis inside YYYYMMDD_new.lis.Z):
+    DATE|SYMBOL|SECTOR|NAME|OPEN|HIGH|LOW|CLOSE|VOLUME|LDCP|||
+    Futures rows (symbol contains '-') are skipped. Returns {YYYY-MM-DD: frame}."""
+    rows = []
+    for line in text.splitlines():
+        f = line.strip().split("|")
+        if len(f) < 10 or "-" in f[1]:
+            continue
+        try:
+            d = pd.to_datetime(f[0], format="%d%b%Y").strftime("%Y-%m-%d")
+            o, h, l, c, v = (float(x) for x in f[4:9])
+        except ValueError:
+            continue
+        if c <= 0:
+            continue
+        o = o if o > 0 else c                       # no trade today: open/high/low reported as 0
+        h, l = (h if h > 0 else c), (l if l > 0 else c)
+        rows.append((d, f[1].strip().upper(), o, h, l, c, v))
+    df = pd.DataFrame(rows, columns=["date", "symbol", "open", "high", "low", "close", "volume"])
+    return {d: g.drop(columns="date").drop_duplicates("symbol").set_index("symbol") for d, g in df.groupby("date")}
+
+
+def _read_lis_file(f: Path) -> dict[str, pd.DataFrame]:
+    import zipfile
+    raw = f.read_bytes()
+    if zipfile.is_zipfile(f):
+        with zipfile.ZipFile(f) as z:
+            names = [n for n in z.namelist() if n.lower().endswith(".lis")] or z.namelist()
+            text = "\n".join(z.read(n).decode("latin-1") for n in names)
+    elif raw[:2] == b"\x1f\x8b":
+        import gzip
+        text = gzip.decompress(raw).decode("latin-1")
+    else:
+        text = raw.decode("latin-1")
+    return parse_lis(text)
+
+
 def import_inbox(folder: Path = INBOX, verbose: bool = True) -> int:
     """Merge every CSV/XLSX in inbox/ into data/daily/, then move it to inbox/processed/."""
     folder.mkdir(exist_ok=True)
@@ -180,6 +218,25 @@ def import_inbox(folder: Path = INBOX, verbose: bool = True) -> int:
     if verbose:
         print(f"inbox: looking in {folder} - {len(files)} file(s) found")
     for f in files:
+        if f.name.lower().endswith((".lis", ".lis.z", ".z", ".zip")):
+            try:
+                parts = _read_lis_file(f)
+                if not parts:
+                    raise ValueError("no price rows found")
+                for d, df in parts.items():
+                    target = DAILY / f"{d}.csv"
+                    if target.exists() and target.stat().st_size > 50:
+                        old = pd.read_csv(target, index_col=0)
+                        df = pd.concat([old[~old.index.isin(df.index)], df])
+                    df.to_csv(target)
+                f.replace(done / f.name)
+                n += 1
+                if verbose:
+                    for d, df in parts.items():
+                        print(f"inbox: imported PSX closing file {f.name} ({len(df)} symbols, dated {d})")
+            except Exception as e:
+                print(f"inbox: could not read {f.name}: {e}")
+            continue
         if f.suffix.lower() in (".html", ".htm"):
             try:
                 df = parse_price_table(f.read_text(encoding="utf-8", errors="ignore"))
@@ -202,7 +259,7 @@ def import_inbox(folder: Path = INBOX, verbose: bool = True) -> int:
             continue
         if f.suffix.lower() not in (".csv", ".xlsx", ".xls"):
             if verbose:
-                print(f"inbox: skipped {f.name} - supported: .csv .xlsx .xls, or a saved Market Watch .html page")
+                print(f"inbox: skipped {f.name} - supported: .csv .xlsx .xls, PSX closing file .lis/.lis.Z, or a saved Market Watch .html page")
             continue
         try:
             if f.suffix.lower() == ".csv":

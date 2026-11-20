@@ -124,3 +124,14 @@ def test_saved_market_watch_page(tmp_path, monkeypatch):
     assert d.import_inbox(inbox, verbose=False) == 1
     day = pd.read_csv(tmp_path / "daily" / "2026-11-20.csv", index_col=0)
     assert day.at["LUCK", "close"] == 433.94 and day.at["LUCK", "high"] == 436.5 and day.at["LUCK", "volume"] == 1250000
+
+def test_psx_closing_lis(tmp_path, monkeypatch):
+    import shutil
+    from psx_monitor import data as d
+    monkeypatch.setattr(d, "DAILY", tmp_path / "daily")
+    inbox = tmp_path / "inbox"; inbox.mkdir()
+    shutil.copy(ROOT / "tests/fixtures/20261120_new.lis.Z", inbox)
+    assert d.import_inbox(inbox, verbose=False) == 1
+    day = pd.read_csv(tmp_path / "daily" / "2026-11-20.csv", index_col=0)
+    assert day.at["LUCK", "close"] == 429 and day.at["ENGROH", "high"] == 307.66 and day.at["SYS", "volume"] == 1161581
+    assert not any("-" in s for s in day.index)          # futures skipped

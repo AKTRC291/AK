@@ -25,7 +25,7 @@ import yaml
 from .data import History, PSXClient, PSXUnavailable, import_inbox
 from .indicators import add_all
 from .notify import send_whatsapp
-from .signals import investment_signals, swing_signals
+from .signals import investment_signals, swing_signals, uptrend
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
@@ -101,7 +101,7 @@ def run_close(c: dict, dry: bool) -> None:
         # levels for tomorrow's intraday breakout watch
         hh_next = df["close"].iloc[-sw["breakout_lookback"]:].max()
         levels[s] = dict(close=r["close"], breakout=hh_next, vol20=r["vol20"], atr=r["atr"],
-                         uptrend=bool(r["close"] > r["sma_fast"]), value20=r["value20"])
+                         uptrend=bool(uptrend(r)), value20=r["value20"])
     pes = [x.pe_ttm for x in snaps.values() if x.pe_ttm and 0 < x.pe_ttm < 100]
     index_pe = statistics.median(pes) if pes else None
     for s, snap in snaps.items():
