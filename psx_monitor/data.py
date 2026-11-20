@@ -180,9 +180,29 @@ def import_inbox(folder: Path = INBOX, verbose: bool = True) -> int:
     if verbose:
         print(f"inbox: looking in {folder} - {len(files)} file(s) found")
     for f in files:
+        if f.suffix.lower() in (".html", ".htm"):
+            try:
+                df = parse_price_table(f.read_text(encoding="utf-8", errors="ignore"))
+                if df.empty or df["close"].isna().all():
+                    raise ValueError("no price table found - save the Market Watch page (Ctrl+S, 'Webpage, HTML only')")
+                m = re.search(r"(20\d{2})[-_]?(\d{2})[-_]?(\d{2})", f.name)
+                day = f"{m.group(1)}-{m.group(2)}-{m.group(3)}" if m else today
+                df = df[df["close"] > 0][["open", "high", "low", "close", "volume"]]
+                target = DAILY / f"{day}.csv"
+                if target.exists() and target.stat().st_size > 50:
+                    old = pd.read_csv(target, index_col=0)
+                    df = pd.concat([old[~old.index.isin(df.index)], df])
+                df.to_csv(target)
+                f.replace(done / f.name)
+                n += 1
+                if verbose:
+                    print(f"inbox: imported saved page {f.name} ({len(df)} symbols, dated {day})")
+            except Exception as e:
+                print(f"inbox: could not read {f.name}: {e}")
+            continue
         if f.suffix.lower() not in (".csv", ".xlsx", ".xls"):
             if verbose:
-                print(f"inbox: skipped {f.name} - only .csv / .xlsx / .xls are supported")
+                print(f"inbox: skipped {f.name} - supported: .csv .xlsx .xls, or a saved Market Watch .html page")
             continue
         try:
             if f.suffix.lower() == ".csv":
@@ -267,7 +287,11 @@ _COLMAP = {"symbol": "symbol", "scrip": "symbol", "ldcp": "ldcp", "open": "open"
 def parse_price_table(html: str) -> pd.DataFrame:
     """Parse PSX historical / market-watch HTML tables by header name."""
     soup = BeautifulSoup(html, "html.parser")
-    table = soup.find("table")
+    table = None
+    for tb in soup.find_all("table"):   # first table with SYMBOL + a price column
+        hs = {th.get_text(" ", strip=True).lower() for th in tb.find_all("th")}
+        if hs & {"symbol", "scrip"} and hs & {"current", "close", "ldcp"}:
+            table = tb; break
     if table is None:
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume", "ldcp"])
     heads = [th.get_text(" ", strip=True).lower() for th in table.find_all("th")]

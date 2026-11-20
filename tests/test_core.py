@@ -108,3 +108,19 @@ def test_wide_workbook(tmp_path):
     assert long["date"].nunique() == 2                               # weekend dropped
     a = long[long.symbol == "AAA"].set_index("date")["close"]
     assert list(a.round(6)) == [20.0, 20.0]                          # split removed
+
+MW_HTML = """<html><body><table><tr><th>Index</th><th>Value</th></tr><tr><td>KSE100</td><td>1</td></tr></table>
+<table class="tbl"><thead><tr><th>SYMBOL</th><th>SECTOR</th><th>LISTED IN</th><th>LDCP</th><th>OPEN</th><th>HIGH</th>
+<th>LOW</th><th>CURRENT</th><th>CHANGE</th><th>CHANGE (%)</th><th>VOLUME</th></tr></thead><tbody>
+<tr><td data-title="Lucky Cement"><a href="/company/LUCK">LUCK</a></td><td>CEMENT</td><td>KSE100,KSE30</td><td>431.0</td>
+<td>432.0</td><td>436.5</td><td>430.1</td><td>433.94</td><td>2.94</td><td>0.68%</td><td>1,250,000</td></tr>
+</tbody></table></body></html>"""
+
+def test_saved_market_watch_page(tmp_path, monkeypatch):
+    from psx_monitor import data as d
+    monkeypatch.setattr(d, "DAILY", tmp_path / "daily")
+    inbox = tmp_path / "inbox"; inbox.mkdir()
+    (inbox / "Market Watch 2026-11-20.html").write_text(MW_HTML)
+    assert d.import_inbox(inbox, verbose=False) == 1
+    day = pd.read_csv(tmp_path / "daily" / "2026-11-20.csv", index_col=0)
+    assert day.at["LUCK", "close"] == 433.94 and day.at["LUCK", "high"] == 436.5 and day.at["LUCK", "volume"] == 1250000
