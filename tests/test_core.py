@@ -86,3 +86,25 @@ def test_value_trap_excluded():
     assert investment_signals("X", 100, trap, C["investment"], 8.0) == []
     v = investment_signals("Y", 100, good, C["investment"], 8.0)
     assert v and "+25% YoY" in v[0].note and v[0].score > 0.6
+
+def test_wide_workbook(tmp_path):
+    from psx_monitor import data as d
+    import datetime as dt
+    days = [dt.datetime(2026, 11, 13), dt.datetime(2026, 11, 14), dt.datetime(2026, 11, 16)]  # 14th = Saturday
+    def sheet(field, vals):
+        rows = [[None, 1, 2], [None, "AAA", "BBB"], [None, field, field]]
+        rows += [[day] + v for day, v in zip(days, vals)]
+        return pd.DataFrame(rows)
+    close = [[100, 50], [100, 50], [20, 51]]          # AAA 1:5 split on the 16th
+    adj = [[20, 49], [20, 49], [20, 51]]              # back-adjusted, = close on last day
+    vol = [[1000, 500], [None, None], [5000, 600]]    # Saturday has no volume
+    f = tmp_path / "wb.xlsx"
+    with pd.ExcelWriter(f) as w:
+        for name, v in [("OPEN", close), ("HIGH", close), ("LOW", close), ("UNADJUSTED PRICE", close),
+                        ("VOLUME", vol), ("Total Return Price", adj)]:
+            sheet(name, v).to_excel(w, sheet_name=name, header=False, index=False)
+    assert d.is_wide_workbook(pd.ExcelFile(f).sheet_names)
+    long = d.parse_wide_workbook(f)
+    assert long["date"].nunique() == 2                               # weekend dropped
+    a = long[long.symbol == "AAA"].set_index("date")["close"]
+    assert list(a.round(6)) == [20.0, 20.0]                          # split removed

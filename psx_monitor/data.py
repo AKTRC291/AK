@@ -84,6 +84,62 @@ def _norm(h) -> str:
     return re.sub(r"[^a-z]", "", str(h).lower())
 
 
+def _parse_dates(s: pd.Series) -> pd.Series:
+    """Excel datetimes, ISO yyyy-mm-dd, or Pakistani dd/mm/yyyy."""
+    if pd.api.types.is_datetime64_any_dtype(s):
+        return s
+    iso = pd.to_datetime(s, errors="coerce", format="ISO8601")
+    if iso.notna().mean() > 0.9:
+        return iso
+    return pd.to_datetime(s, errors="coerce", dayfirst=True)
+
+
+_WIDE_SHEETS = {"open": "OPEN", "high": "HIGH", "low": "LOW", "close": "UNADJUSTED PRICE",
+                "volume": "VOLUME", "adj": "Total Return Price"}
+
+
+def is_wide_workbook(sheets: list[str]) -> bool:
+    up = {s.strip().upper() for s in sheets}
+    return {"OPEN", "HIGH", "LOW", "UNADJUSTED PRICE"} <= up
+
+
+def parse_wide_workbook(path) -> pd.DataFrame:
+    """Terminal workbook: one sheet per field, dates down, symbols across.
+
+    Row 1 = column numbers, row 2 = symbols, row 3 = field name, then data.
+    Calendar days with no volume (weekends/holidays) are dropped. Prices are
+    back-adjusted for splits/bonus/dividends using 'Total Return Price' (which
+    equals the actual price on the latest date), so moving averages stay valid.
+    Returns long format: date, symbol, open, high, low, close, volume.
+    """
+    raw = pd.read_excel(path, sheet_name=None, header=1)
+    by_up = {k.strip().upper(): v for k, v in raw.items()}
+    frames = {}
+    for key, sheet in _WIDE_SHEETS.items():
+        df = by_up.get(sheet.upper())
+        if df is None:
+            continue
+        df = df.rename(columns={df.columns[0]: "date"})
+        df = df[pd.to_datetime(df["date"], errors="coerce").notna()]
+        df.index = pd.to_datetime(df.pop("date"))
+        df.columns = [str(c).strip().upper() for c in df.columns]
+        frames[key] = df.apply(pd.to_numeric, errors="coerce")
+    vol = frames["volume"]
+    trading = vol.notna().any(axis=1)
+    out = {}
+    factor = (frames["adj"] / frames["close"]) if "adj" in frames else None
+    for k in ("open", "high", "low", "close"):
+        f = frames[k].loc[trading]
+        out[k] = f * factor.loc[trading] if factor is not None else f
+    out["volume"] = vol.loc[trading]
+    long = pd.concat({k: v.stack(future_stack=True) for k, v in out.items()}, axis=1)
+    long.index.names = ["date", "symbol"]
+    long = long.dropna(subset=["close"]).reset_index()
+    long = long[long["close"] > 0]
+    long["volume"] = long["volume"].fillna(0)
+    return long
+
+
 def standardize_export(df: pd.DataFrame, name: str, default_date: str) -> dict[str, pd.DataFrame]:
     """Map any broker/PSX export to {date: DataFrame(index=symbol, open high low close volume)}."""
     cols = {}
@@ -104,7 +160,7 @@ def standardize_export(df: pd.DataFrame, name: str, default_date: str) -> dict[s
         out["symbol"] = re.sub(r"[^A-Z0-9]", "", Path(name).stem.upper().split("_")[0])
     out["symbol"] = out["symbol"].astype(str).str.strip().str.upper()
     if "date" in out:
-        out["date"] = pd.to_datetime(out["date"], errors="coerce", dayfirst=True).dt.strftime("%Y-%m-%d")
+        out["date"] = _parse_dates(out["date"]).dt.strftime("%Y-%m-%d")
     else:
         m = re.search(r"(20\d{2})[-_]?(\d{2})[-_]?(\d{2})", name)
         out["date"] = f"{m.group(1)}-{m.group(2)}-{m.group(3)}" if m else default_date
@@ -129,7 +185,15 @@ def import_inbox(folder: Path = INBOX, verbose: bool = True) -> int:
                 print(f"inbox: skipped {f.name} - only .csv / .xlsx / .xls are supported")
             continue
         try:
-            raw = pd.read_csv(f) if f.suffix.lower() == ".csv" else pd.read_excel(f)
+            if f.suffix.lower() == ".csv":
+                raw = pd.read_csv(f)
+            elif is_wide_workbook(pd.ExcelFile(f).sheet_names):
+                raw = parse_wide_workbook(f)
+                if verbose:
+                    print(f"inbox: {f.name} is a multi-sheet terminal workbook "
+                          f"({raw['symbol'].nunique()} symbols, {raw['date'].nunique()} trading days, split/dividend-adjusted)")
+            else:
+                raw = pd.read_excel(f)
             parts = standardize_export(raw, f.name, today)
         except Exception as e:
             print(f"inbox: could not read {f.name}: {e}"); continue
