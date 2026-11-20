@@ -55,12 +55,35 @@ def _send_telegram(text: str, token: str, chat: str) -> None:
         r.raise_for_status()
 
 
-def send_whatsapp(text: str, dry_run: bool = False) -> None:
-    """Send an alert on the configured channel (name kept for compatibility)."""
+ALERTS = Path(__file__).resolve().parent.parent / "alerts"
+
+
+def _write_alert(text: str, job: str) -> None:
+    """Save the alert for the Claude app relay (scripts/run.cmd pushes alerts/ to GitHub)."""
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+    now = dt.datetime.now(ZoneInfo("Asia/Karachi"))
+    ALERTS.mkdir(exist_ok=True)
+    body = f"generated: {now:%Y-%m-%d %H:%M} PKT\n{text.strip()}\n"
+    (ALERTS / f"latest_{job}.txt").write_text(body, encoding="utf-8")
+    if job == "intraday":   # keep the day's intraday alerts together
+        with open(ALERTS / f"intraday_{now:%Y-%m-%d}.txt", "a", encoding="utf-8") as f:
+            f.write(body + "\n")
+    print(f"[claude] alert saved to alerts/latest_{job}.txt")
+
+
+def send_whatsapp(text: str, dry_run: bool = False, job: str = "misc") -> None:
+    """Send an alert on the configured channel (name kept for compatibility).
+
+    ALERT_PROVIDER: "claude" (default; saved to alerts/ and relayed to the Claude app),
+    "telegram", or "callmebot".
+    """
     load_env()
-    provider = os.environ.get("ALERT_PROVIDER", "callmebot").strip().lower()
+    provider = os.environ.get("ALERT_PROVIDER", "claude").strip().lower()
     if dry_run:
         print("[dry-run]\n" + text); return
+    if provider == "claude":
+        return _write_alert(text, job)
     if provider == "telegram":
         token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
         if token and chat:

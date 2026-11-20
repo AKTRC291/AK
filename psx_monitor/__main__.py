@@ -130,19 +130,19 @@ def run_close(c: dict, dry: bool) -> None:
         lines.append(f"\nUniverse median P/E {index_pe:.1f} | scanned {len(syms) - len(failed)}/{len(syms)}")
     if failed and len(failed) < len(syms):
         lines.append(f"No/short price history: {', '.join(failed[:15])}{' ...' if len(failed) > 15 else ''}")
-    send_whatsapp("\n".join(lines), dry)
+    send_whatsapp("\n".join(lines), dry, job="close")
 
 
 def run_preopen(c: dict, dry: bool) -> None:
     f = DATA / "levels.json"
     if not f.exists():
-        send_whatsapp("PSX pre-open: no levels yet - run the close scan first.", dry); return
+        send_whatsapp("PSX pre-open: no levels yet - run the close scan first.", dry, job="preopen"); return
     lv = json.loads(f.read_text())
     watch = sorted(((s, v) for s, v in lv.items() if v["uptrend"] and v["value20"] >= c["universe"]["min_avg_traded_value_rs"]
                     and v["close"] >= 0.97 * v["breakout"]), key=lambda x: x[1]["close"] / x[1]["breakout"], reverse=True)[:15]
     lines = [f"*PSX pre-open {now():%d-%b}*", macro_lines(c), "", "*Breakout watch (within 3% of 20d high)*"]
     lines += [f"{s} {v['close']:,.2f} -> trigger >{v['breakout']:,.2f} on {c['swing']['breakout_volume_mult']}x vol" for s, v in watch] or ["none"]
-    send_whatsapp("\n".join(lines), dry)
+    send_whatsapp("\n".join(lines), dry, job="preopen")
 
 
 def run_intraday(c: dict, dry: bool) -> None:
@@ -185,7 +185,7 @@ def run_intraday(c: dict, dry: bool) -> None:
                 alerts.append(f"{s} in {name} zone {lo}-{hi} @ {px:,.2f}"); state["sent"].append(f"{s}:{name}")
     state_f.write_text(json.dumps(state))
     if alerts:
-        send_whatsapp(f"*PSX intraday {t:%H:%M}*\n" + "\n".join(alerts), dry)
+        send_whatsapp(f"*PSX intraday {t:%H:%M}*\n" + "\n".join(alerts), dry, job="intraday")
 
 
 def run_backtest(c: dict, start: str | None) -> None:
@@ -242,7 +242,7 @@ def main(argv=None) -> None:
     if a.mode == "diagnose":
         return run_diagnose(c)
     if a.mode == "test-whatsapp":
-        return send_whatsapp("PSX monitor: alert channel OK.", a.dry_run)
+        return send_whatsapp("PSX monitor: alert channel OK.", a.dry_run, job="test")
     if not (a.force or is_trading_day(c)):
         return
     {"close": run_close, "preopen": run_preopen, "intraday": run_intraday}[a.mode](c, a.dry_run)
