@@ -1,0 +1,5 @@
+generated: 2026-11-20 15:37 PKT
+*PSX intraday 15:36*
+BNWM MOVE -7.2% @ 62.00
+ENGROH BREAKOUT live 293.98 (>279.42, vol pace 8.6x) SL 285.07 T 311.81
+ENGROH MOVE +6.0% @ 293.98
