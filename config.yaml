@@ -35,6 +35,10 @@ investment:
     NRL: "refinery - P/E incl. inventory gains"
     CNERGY: "refinery - P/E incl. inventory gains"
 
+market_hours:               # PKT; Friday has its own session
+  mon_thu: {open: "09:30", close: "15:30"}
+  fri:     {open: "09:00", close: "16:30"}
+
 intraday:
   scan_every_min: 30
   big_move_pct: 4.0          # alert on +/-4% intraday move in a universe stock

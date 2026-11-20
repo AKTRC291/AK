@@ -48,6 +48,15 @@ def is_trading_day(c: dict, d: dt.date | None = None) -> bool:
     return d.weekday() < 5 and d.isoformat() not in {str(h) for h in c.get("holidays", [])}
 
 
+def session(c: dict, d: dt.date | None = None) -> tuple[dt.time, dt.time]:
+    """Market open/close for the day (Friday differs)."""
+    d = d or now().date()
+    mh = c.get("market_hours", {}).get("fri" if d.weekday() == 4 else "mon_thu",
+                                        {"open": "09:30", "close": "15:30"})
+    o, cl = (dt.time(*map(int, mh[k].split(":"))) for k in ("open", "close"))
+    return o, cl
+
+
 def macro_lines(c: dict) -> str:
     f = ROOT / c["macro"]["file"]
     return f.read_text().strip() if f.exists() else "Macro: (data/macro.txt not set)"
@@ -107,7 +116,9 @@ def run_close(c: dict, dry: bool) -> None:
 
     p = hist.panel()
     asof = pd.Timestamp(p["date"].max()).date() if "date" in p and len(p) else None
-    stale = asof is not None and asof < now().date() and now().time() >= dt.time(15, 45)
+    _, mkt_close = session(c)
+    after_close = (dt.datetime.combine(now().date(), mkt_close) + dt.timedelta(minutes=15)).time()
+    stale = asof is not None and asof < now().date() and now().time() >= after_close
     head = f"*PSX close scan {now():%d-%b-%Y}*"
     if asof:
         head += f" | prices as of {asof:%d-%b}" + (" (STALE - save today's export to inbox/)" if stale else "")
@@ -147,7 +158,9 @@ def run_preopen(c: dict, dry: bool) -> None:
 
 def run_intraday(c: dict, dry: bool) -> None:
     t = now()
-    if not (dt.time(9, 30) <= t.time() <= dt.time(15, 35)):
+    mkt_open, mkt_close = session(c, t.date())
+    o_dt, c_dt = (dt.datetime.combine(t.date(), x, tzinfo=PKT) for x in (mkt_open, mkt_close))
+    if not (o_dt <= t <= c_dt + dt.timedelta(minutes=5)):
         return
     lv = json.loads((DATA / "levels.json").read_text()) if (DATA / "levels.json").exists() else {}
     state_f = DATA / "intraday_state.json"
@@ -155,7 +168,7 @@ def run_intraday(c: dict, dry: bool) -> None:
     if state.get("date") != t.date().isoformat():
         state = {"date": t.date().isoformat(), "sent": []}
     cl = PSXClient(c["http"]["delay_sec"], c["http"]["timeout_sec"])
-    session_frac = max(0.05, min(1.0, ((t.hour - 9) * 60 + t.minute - 30) / 360))
+    session_frac = max(0.05, min(1.0, (t - o_dt).total_seconds() / (c_dt - o_dt).total_seconds()))
     zones = c["investment"].get("zones") or {}
     watch = [s for s, v in lv.items() if v["uptrend"] and v["close"] >= 0.97 * v["breakout"]]
     watch = list(dict.fromkeys(watch + c["universe"]["extra_watchlist"] + list(zones)))
