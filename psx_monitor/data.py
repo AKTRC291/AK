@@ -120,8 +120,13 @@ def import_inbox(folder: Path = INBOX, verbose: bool = True) -> int:
     done = folder / "processed"; done.mkdir(exist_ok=True)
     today = pd.Timestamp.now(tz="Asia/Karachi").strftime("%Y-%m-%d")
     n = 0
-    for f in sorted(folder.iterdir()):
+    files = [f for f in sorted(folder.iterdir()) if f.is_file() and f.name != ".gitkeep"]
+    if verbose:
+        print(f"inbox: looking in {folder} - {len(files)} file(s) found")
+    for f in files:
         if f.suffix.lower() not in (".csv", ".xlsx", ".xls"):
+            if verbose:
+                print(f"inbox: skipped {f.name} - only .csv / .xlsx / .xls are supported")
             continue
         try:
             raw = pd.read_csv(f) if f.suffix.lower() == ".csv" else pd.read_excel(f)
