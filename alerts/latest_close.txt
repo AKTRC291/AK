@@ -1,0 +1,34 @@
+generated: 2026-11-20 12:54 PKT
+*PSX close scan 20-Nov-2026* | prices as of 19-Nov
+Macro (as of 18-Nov-26): SBP rate 12% (+50bp 27-Oct) | Oct CPI 9.61% (Sep 10.26%) | USD/PKR ~276.65 | SBP FX $21.57bn (6-Nov)
+Mkt: KSE-100 177,874 (13-Nov close); choppy 177-179k after 10-Nov +3.1% surge; 16-Nov fractionally higher
+Risk: IMF pushing fuel-subsidy phase-out before Dec board (OMC/refinery margins); Hormuz oil-supply risk persists
+
+*Swing (3-10d)*
+EFERT BREAKOUT @222.00 | E 222.00 SL 214.98 T 236.04 vol 2.2x
+BAHL OVERBOUGHT @170.36 RSI14 77
+EFERT OVERBOUGHT @222.00 RSI14 82
+FFC OVERBOUGHT @576.74 RSI14 75
+
+*Investment*
+ATRL VALUE @953.18 P/E 2.5 vs mkt 8.3; qtr EPS +1184% YoY [base effect/one-offs? verify]; [refinery - P/E incl. inventory gains]
+GADT VALUE @303.00 P/E 2.6 vs mkt 8.3; qtr EPS +103% YoY [base effect/one-offs? verify]
+THALL VALUE @538.00 P/E 4.1 vs mkt 8.3; qtr EPS +1250% YoY [base effect/one-offs? verify]; near 52w low 490
+APL VALUE @571.00 P/E 3.6 vs mkt 8.3; qtr EPS +74% YoY; [P/E incl. inventory gains - check normalized EPS]
+CNERGY VALUE @11.96 P/E 2.7 vs mkt 8.3; [refinery - P/E incl. inventory gains]
+BAFL VALUE @60.16 P/E 3.0 vs mkt 8.3
+SNGP VALUE @92.64 P/E 3.9 vs mkt 8.3; qtr EPS +23% YoY
+PSO VALUE @364.50 P/E 5.4 vs mkt 8.3; qtr EPS +172% YoY [base effect/one-offs? verify]; [P/E incl. inventory gains - check normalized EPS]
+FHAM VALUE @28.70 P/E 4.1 vs mkt 8.3; qtr EPS +12% YoY
+INDU VALUE @1,835.38 P/E 5.5 vs mkt 8.3; qtr EPS +10% YoY; near 52w low 1,695
+(+5 more cheap names not shown)
+
+*Events*
+FFL: Board Meeting In Progress (Nov 19, 2026)
+KAPCO: Material Information - Transfer of BESOS shares back to the Pakistan Water and Power Development Authority (WAPDA) (Nov 19, 2026)
+SNGP: Board Meeting (Nov 19, 2026)
+SSGC: Board Meeting (Nov 20, 2026)
+THCCL: Board Meeting (Nov 20, 2026)
+
+Universe median P/E 8.3 | scanned 100/103
+No/short price history: SHEL, GO, SLTC
