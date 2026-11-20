@@ -242,7 +242,7 @@ def main(argv=None) -> None:
     if a.mode == "diagnose":
         return run_diagnose(c)
     if a.mode == "test-whatsapp":
-        return send_whatsapp("PSX monitor: WhatsApp link OK.", a.dry_run)
+        return send_whatsapp("PSX monitor: alert channel OK.", a.dry_run)
     if not (a.force or is_trading_day(c)):
         return
     {"close": run_close, "preopen": run_preopen, "intraday": run_intraday}[a.mode](c, a.dry_run)
