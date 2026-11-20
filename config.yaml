@@ -3,7 +3,7 @@
 
 universe:
   index: KSE100              # constituents pulled live from dps.psx.com.pk/indices/KSE100
-  extra_watchlist: [MARI, PSO, AIRLINK, LUCK, BOP, APL, SHEL, GO, SYS, SLTC]
+  extra_watchlist: [MARI, PSO, AIRLINK, LUCK, BOP, APL, SHEL, GO, SYS, SELECT]   # SELECT = Select Technologies (PSX symbol)
   min_avg_traded_value_rs: 50_000_000   # 20-day avg (close x volume) liquidity floor
 
 swing:                       # 3-10 session holding period
