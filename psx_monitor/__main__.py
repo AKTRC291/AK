@@ -105,7 +105,13 @@ def run_close(c: dict, dry: bool) -> None:
                 events.append(f"{s}: {t} ({d})")
     (DATA / "levels.json").write_text(json.dumps(levels, default=float))
 
-    lines = [f"*PSX close scan {now():%d-%b-%Y}*", macro_lines(c), ""]
+    p = hist.panel()
+    asof = pd.Timestamp(p["date"].max()).date() if "date" in p and len(p) else None
+    stale = asof is not None and asof < now().date() and now().time() >= dt.time(15, 45)
+    head = f"*PSX close scan {now():%d-%b-%Y}*"
+    if asof:
+        head += f" | prices as of {asof:%d-%b}" + (" (STALE - save today's export to inbox/)" if stale else "")
+    lines = [head, macro_lines(c), ""]
     order = {"BREAKOUT": 0, "PULLBACK": 1, "TREND-BREAK": 2, "OVERBOUGHT": 3}
     lines.append("*Swing (3-10d)*")
     if failed and len(failed) == len(syms):
