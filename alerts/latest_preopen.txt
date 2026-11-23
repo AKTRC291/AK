@@ -1,0 +1,14 @@
+generated: 2026-11-23 13:11 PKT
+*PSX pre-open 23-Nov*
+Macro (as of 23-Nov-26): SBP rate 12% (+50bp 27-Oct) | Oct CPI 9.61% (Sep 10.26%) | USD/PKR ~276.65 (10-Nov) | SBP FX $21.59bn (13-Nov)
+Mkt: KSE-100 176,772 (19-Nov close, +0.27%); drifting 176-178k after -0.69% on 18-Nov
+Risk: IMF pushing fuel-subsidy phase-out before Dec board (OMC/refinery margins); Hormuz oil-supply risk persists
+
+*Breakout watch (within 3% of 20d high)*
+EFERT 220.48 -> trigger >222.00 on 1.5x vol
+FFC 571.30 -> trigger >576.74 on 1.5x vol
+MLCF 105.81 -> trigger >107.27 on 1.5x vol
+OGDC 312.55 -> trigger >317.02 on 1.5x vol
+MCB 404.31 -> trigger >411.45 on 1.5x vol
+BAFL 59.70 -> trigger >60.96 on 1.5x vol
+MARI 718.51 -> trigger >737.28 on 1.5x vol
