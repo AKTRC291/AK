@@ -1,4 +1,5 @@
-generated: 2026-11-23 13:12 PKT
-*PSX intraday 13:11*
-PGLC BREAKOUT live 24.67 (>22.43, vol pace 23.9x) SL 22.96 T 28.08
-PGLC MOVE +10.0% @ 24.67
+generated: 2026-11-24 12:20 PKT
+*PSX intraday 12:19*
+MLCF BREAKOUT live 108.30 (>107.27, vol pace 1.7x) SL 103.78 T 117.34
+PGLC BREAKOUT live 27.14 (>22.43, vol pace 23.0x) SL 25.43 T 30.55
+PGLC MOVE +21.0% @ 27.14
