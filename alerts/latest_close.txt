@@ -1,30 +1,33 @@
-generated: 2026-11-23 15:52 PKT
-*PSX close scan 23-Nov-2026* | prices as of 20-Nov (STALE - save today's export to inbox/)
-Macro (as of 23-Nov-26): SBP rate 12% (+50bp 27-Oct) | Oct CPI 9.61% (Sep 10.26%) | USD/PKR ~276.65 (10-Nov) | SBP FX $21.59bn (13-Nov)
+generated: 2026-11-25 17:20 PKT
+*PSX close scan 25-Nov-2026* | prices as of 23-Nov (STALE - save today's export to inbox/)
+Macro (as of 25-Nov-26): SBP rate 12% (+50bp 27-Oct) | Oct CPI 9.61% (Sep 10.26%) | USD/PKR ~276.55 (18-Nov) | SBP FX $21.59bn (13-Nov)
 Mkt: KSE-100 176,772 (19-Nov close, +0.27%); drifting 176-178k after -0.69% on 18-Nov
 Risk: IMF pushing fuel-subsidy phase-out before Dec board (OMC/refinery margins); Hormuz oil-supply risk persists
 
 *Swing (3-10d)*
-GAL PULLBACK @527.88 | E 527.88 SL 502.27 T 579.10 RSI2 8
-BAHL OVERBOUGHT @169.90 RSI14 76
-EFERT OVERBOUGHT @220.48 RSI14 78
+GAL PULLBACK @524.82 | E 524.82 SL 500.09 T 574.28 RSI2 6
+ENGROH OVERBOUGHT @303.12 RSI14 76
 
 *Investment*
-ATRL VALUE @928.66 P/E 2.5 vs mkt 8.3; qtr EPS +1184% YoY [base effect/one-offs? verify]; [refinery - P/E incl. inventory gains]
-GADT VALUE @300.27 P/E 2.6 vs mkt 8.3; qtr EPS +103% YoY [base effect/one-offs? verify]
-THALL VALUE @535.00 P/E 4.0 vs mkt 8.3; qtr EPS +1250% YoY [base effect/one-offs? verify]; near 52w low 490
-SELECT VALUE @22.27 P/E 3.2 vs mkt 8.3; near 52w low 21
-SNGP VALUE @91.38 P/E 3.9 vs mkt 8.3; qtr EPS +23% YoY; near 52w low 83
-APL VALUE @570.00 P/E 3.6 vs mkt 8.3; qtr EPS +74% YoY; [P/E incl. inventory gains - check normalized EPS]
-CNERGY VALUE @11.73 P/E 2.6 vs mkt 8.3; [refinery - P/E incl. inventory gains]
-BAFL VALUE @59.70 P/E 3.0 vs mkt 8.3
-POL VALUE @659.24 P/E 5.4 vs mkt 8.3; qtr EPS +51% YoY; near 52w low 600
-PSO VALUE @358.81 P/E 5.4 vs mkt 8.3; qtr EPS +172% YoY [base effect/one-offs? verify]; [P/E incl. inventory gains - check normalized EPS]
+ATRL VALUE @918.23 P/E 2.5 vs mkt 8.3; qtr EPS +1184% YoY [base effect/one-offs? verify]; [refinery - P/E incl. inventory gains]
+GADT VALUE @296.46 P/E 2.6 vs mkt 8.3; qtr EPS +103% YoY [base effect/one-offs? verify]
+THALL VALUE @530.10 P/E 4.1 vs mkt 8.3; qtr EPS +1250% YoY [base effect/one-offs? verify]; near 52w low 490
+SELECT VALUE @22.41 P/E 3.2 vs mkt 8.3; near 52w low 21
+SNGP VALUE @91.00 P/E 3.9 vs mkt 8.3; qtr EPS +23% YoY; near 52w low 83
+APL VALUE @568.16 P/E 3.6 vs mkt 8.3; qtr EPS +74% YoY; [P/E incl. inventory gains - check normalized EPS]
+CNERGY VALUE @11.58 P/E 2.6 vs mkt 8.3; [refinery - P/E incl. inventory gains]
+BAFL VALUE @59.78 P/E 3.0 vs mkt 8.3
+POL VALUE @659.56 P/E 5.4 vs mkt 8.3; qtr EPS +51% YoY; near 52w low 600
+PSO VALUE @358.15 P/E 5.4 vs mkt 8.3; qtr EPS +172% YoY [base effect/one-offs? verify]; [P/E incl. inventory gains - check normalized EPS]
 (+6 more cheap names not shown)
 
 *Events*
-GHGL: Notice of Extraordinary General Meeting Ghani Glass Limited (Nov 23, 2026)
-SSOM: Board Meeting Other Than Financial Results (Nov 23, 2026)
+ENGROH: Purchase (Buy-back) of the shares under Section 88 of the Companies Act, 2017 read with Listed Companies (Buy-Back of Shares) Regulations, 2019 (Applicable Law) (Nov 24, 2026)
+HCAR: Financial Results for the Quarter Ended September 30, 2026 (Nov 25, 2026)
+HCAR: Board Meeting in Progress (Nov 24, 2026)
+MTL: General Meetings / Briefing Sessions (Nov 24, 2026)
+NESTLE: Notice of Extraordinary General Meeting (Nov 25, 2026)
+PAKT: Board Meeting Other Than Financial Results (Nov 25, 2026)
 
 Universe median P/E 8.3 | scanned 100/103
 No/short price history: SHEL, GO, SELECT
