@@ -1,0 +1,4 @@
+generated: 2026-11-26 12:27 PKT
+*PSX intraday 12:26*
+PGLC MOVE -10.9% @ 21.97
+
