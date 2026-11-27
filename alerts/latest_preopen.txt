@@ -1,5 +1,5 @@
-generated: 2026-11-26 12:26 PKT
-*PSX pre-open 26-Nov*
+generated: 2026-11-27 11:54 PKT
+*PSX pre-open 27-Nov*
 Macro (as of 25-Nov-26): SBP rate 12% (+50bp 27-Oct) | Oct CPI 9.61% (Sep 10.26%) | USD/PKR ~276.55 (18-Nov) | SBP FX $21.59bn (13-Nov)
 Mkt: KSE-100 176,772 (19-Nov close, +0.27%); drifting 176-178k after -0.69% on 18-Nov
 Risk: IMF pushing fuel-subsidy phase-out before Dec board (OMC/refinery margins); Hormuz oil-supply risk persists
